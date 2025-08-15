@@ -1,27 +1,35 @@
 import streamlit as st
 import re
 
-# Optional: Google Gemini (only needed when you click "Tailor Resume")
+# --- Hard-coded API keys (replace with your own) ---
+GEMINI_API_KEY = "AIzaSyAwX9JfKRV2I_nUQ48Go3InJxQiNui7SYw"
+OPENAI_API_KEY = "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"
+
+# --- Import Gemini and OpenAI SDKs ---
 try:
     import google.generativeai as genai
 except Exception:
     genai = None
+
+try:
+    import openai
+except Exception:
+    openai = None
 
 st.set_page_config(page_title="ATS Resume Tailor", page_icon="🧠", layout="centered")
 
 st.title("🧠 ATS Resume Tailor")
 st.write("Paste each section of your resume, add a job description, and get a tailored, ATS-friendly version. Just copy and paste the results!")
 
-# --- UI: Paste Resume Sections ---
 with st.expander("Paste resume sections separately", expanded=True):
-    summary_text = st.text_area("Summary", height=80, placeholder="E.g. Experienced software engineer with 5+ years in fintech…")
-    skills_text = st.text_area("Skills", height=80, placeholder="E.g. Python, SQL, AWS, Docker…")
-    experience_text = st.text_area("Work Experience", height=150, placeholder="E.g. Software Engineer, ABC Inc, 2020–2023\n- Built...")
-    education_text = st.text_area("Education", height=60, placeholder="E.g. B.Tech in Computer Science, XYZ University, 2019")
-    certifications_text = st.text_area("Certifications (optional)", height=50, placeholder="E.g. AWS Certified Solutions Architect")
-    projects_text = st.text_area("Projects (optional)", height=60, placeholder="E.g. Developed a real-time trading dashboard…")
+    summary_text = st.text_area("Summary", height=80)
+    skills_text = st.text_area("Skills", height=80)
+    experience_text = st.text_area("Work Experience", height=150)
+    education_text = st.text_area("Education", height=60)
+    certifications_text = st.text_area("Certifications (optional)", height=50)
+    projects_text = st.text_area("Projects (optional)", height=60)
 
-jd_text = st.text_area("Paste Job Description", height=180, placeholder="Paste the job description here…")
+jd_text = st.text_area("Paste Job Description", height=180)
 
 col_a, col_b = st.columns(2)
 with col_a:
@@ -32,18 +40,13 @@ with col_b:
 if clear_btn:
     st.experimental_rerun()
 
-# --- Sidebar: Gemini API Key ---
+# --- Sidebar: Model Selection ---
 with st.sidebar:
     st.header("Settings")
-    provider = st.selectbox("Model", ["Gemini 1.5 Flash"], index=0)
-    api_key = st.text_input("GEMINI_API_KEY (or set via Streamlit Secrets)", type="password")
-    use_secrets = st.checkbox("Use Streamlit Secrets", True)
-    if use_secrets:
-        api_key = st.secrets.get("GEMINI_API_KEY", api_key)
+    model_choice = st.selectbox("Choose Model", ["Gemini 1.5 Flash", "ChatGPT-4o (OpenAI)"], index=0)
 
-# --- Main Flow ---
+# --- Main Tailoring Logic ---
 if draft_btn:
-    # 1) Gather resume sections
     resume_sections = {
         "SUMMARY": summary_text,
         "SKILLS": skills_text,
@@ -60,17 +63,10 @@ if draft_btn:
     if not jd_text.strip():
         st.warning("Please paste the job description.")
         st.stop()
-    if genai is None:
-        st.error("google-generativeai not installed.")
-        st.stop()
-    if not api_key:
-        st.info("Add your GEMINI_API_KEY in the sidebar or Streamlit Secrets.")
-        st.stop()
 
-    # 2) Build resume text from sections
     resume_text = "\n".join(f"{section}\n{content}" for section, content in filled_sections.items())
 
-    # 3) Prompt — strict ATS formatting + honesty
+    # --- System Prompt ---
     system_rules = """
 You are an expert resume writer specializing in ATS compliance.
 
@@ -105,15 +101,35 @@ Return TWO blocks in this exact format:
 {jd_text}
 """.strip()
 
-    # 4) Model call
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
-
+    # --- Model Call ---
     with st.spinner("Tailoring your resume…"):
-        resp = model.generate_content([system_rules, user_payload])
-        content = resp.text or ""
+        content = ""
+        if model_choice == "Gemini 1.5 Flash":
+            if genai is None:
+                st.error("google-generativeai not installed.")
+                st.stop()
+            genai.configure(api_key=GEMINI_API_KEY)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            resp = model.generate_content([system_rules, user_payload])
+            content = resp.text or ""
+        elif model_choice == "ChatGPT-4o (OpenAI)":
+            if openai is None:
+                st.error("openai not installed.")
+                st.stop()
+            openai.api_key = OPENAI_API_KEY
+            messages = [
+                {"role": "system", "content": system_rules},
+                {"role": "user", "content": user_payload},
+            ]
+            response = openai.ChatCompletion.create(
+                model="gpt-4o",
+                messages=messages,
+                temperature=0.3,
+                max_tokens=2048
+            )
+            content = response.choices[0].message.content
 
-    # 5) Parse response
+    # --- Parse Response ---
     resume_block = ""
     report_block = ""
     m1 = re.search(r"<RESUME>(.*?)</RESUME>", content, flags=re.DOTALL | re.IGNORECASE)
@@ -125,9 +141,8 @@ Return TWO blocks in this exact format:
     if not resume_block:
         resume_block = content.strip()
 
-    # 6) Display tailored sections for copy-paste
+    # --- Display Results ---
     st.subheader("Tailored Resume (ATS-friendly, copy-paste below)")
-
     section_titles = ["SUMMARY", "SKILLS", "EXPERIENCE", "EDUCATION", "CERTIFICATIONS", "PROJECTS"]
     found_any = False
     for title in section_titles:
