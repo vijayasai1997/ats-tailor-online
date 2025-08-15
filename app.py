@@ -1,10 +1,6 @@
 import streamlit as st
 import re
 
-# --- Hard-coded API keys (replace with your own) ---
-GEMINI_API_KEY = "AIzaSyAwX9JfKRV2I_nUQ48Go3InJxQiNui7SYw"
-OPENAI_API_KEY = "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"
-
 # --- Import Gemini and OpenAI SDKs ---
 try:
     import google.generativeai as genai
@@ -44,6 +40,10 @@ if clear_btn:
 with st.sidebar:
     st.header("Settings")
     model_choice = st.selectbox("Choose Model", ["Gemini 1.5 Flash", "ChatGPT-4o (OpenAI)"], index=0)
+
+# --- Fetch API keys from Streamlit secrets ---
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
 
 # --- Main Tailoring Logic ---
 if draft_btn:
@@ -108,6 +108,9 @@ Return TWO blocks in this exact format:
             if genai is None:
                 st.error("google-generativeai not installed.")
                 st.stop()
+            if not GEMINI_API_KEY:
+                st.error("GEMINI_API_KEY not found in Streamlit secrets.")
+                st.stop()
             genai.configure(api_key=GEMINI_API_KEY)
             model = genai.GenerativeModel("gemini-1.5-flash")
             resp = model.generate_content([system_rules, user_payload])
@@ -115,6 +118,9 @@ Return TWO blocks in this exact format:
         elif model_choice == "ChatGPT-4o (OpenAI)":
             if openai is None:
                 st.error("openai not installed.")
+                st.stop()
+            if not OPENAI_API_KEY:
+                st.error("OPENAI_API_KEY not found in Streamlit secrets.")
                 st.stop()
             openai.api_key = OPENAI_API_KEY
             messages = [
