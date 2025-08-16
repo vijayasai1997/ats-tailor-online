@@ -8,9 +8,9 @@ except Exception:
     genai = None
 
 try:
-    import openai
+    from openai import OpenAI
 except Exception:
-    openai = None
+    OpenAI = None
 
 st.set_page_config(page_title="ATS Resume Tailor", page_icon="🧠", layout="centered")
 
@@ -116,20 +116,20 @@ Return TWO blocks in this exact format:
             resp = model.generate_content([system_rules, user_payload])
             content = resp.text or ""
         elif model_choice == "ChatGPT-4o (OpenAI)":
-            if openai is None:
+            if OpenAI is None:
                 st.error("openai not installed.")
                 st.stop()
             if not OPENAI_API_KEY:
                 st.error("OPENAI_API_KEY not found in Streamlit secrets.")
                 st.stop()
-            openai.api_key = OPENAI_API_KEY
-            messages = [
-                {"role": "system", "content": system_rules},
-                {"role": "user", "content": user_payload},
-            ]
-            response = openai.ChatCompletion.create(
+
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            response = client.chat.completions.create(
                 model="gpt-4o",
-                messages=messages,
+                messages=[
+                    {"role": "system", "content": system_rules},
+                    {"role": "user", "content": user_payload},
+                ],
                 temperature=0.3,
                 max_tokens=2048
             )
